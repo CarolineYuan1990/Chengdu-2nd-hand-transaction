@@ -1,2 +1,90 @@
 # Chengdu-2nd-hand-transaction
-Chengdu 2nd Hand Transaction List_RE
+import os
+import random
+import time
+
+import openpyxl
+import requests
+
+from requests.exceptions import RequestException
+from lxml import etree
+import re
+
+
+def get_one_page(url):
+    try:
+        ua = [
+            "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/535.1 (KHTML, like Gecko) Chrome/14.0.835.163 Safari/535.1",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:77.0) Gecko/20100101 Firefox/77.0",
+            "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/535.1 (KHTML, like Gecko) Chrome/14.0.835.163 Safari/535.1",
+            "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36",
+            "Opera/9.80 (Windows NT 6.1; U; zh-cn) Presto/2.9.168 Version/11.50",
+            "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; GTB7.0)"
+        ]
+        headers = {"User-Agent": random.choice(ua)}
+        response = requests.get(url=url, headers=headers)
+        if response.status_code == 200:
+            return response.text
+        else:
+            return None
+    except RequestException:
+        return None
+
+
+def parse_page(html_data):
+    data_text = etree.HTML(html_data)
+    description = data_text.xpath('//*[@id="content"]/div[1]/ul/li/div[1]/div[1]/a/text()')
+    address = data_text.xpath('//*[@id="content"]/div[1]/ul/li/div[1]/div[2]/div/a[1]/text()')
+    specific_situation = data_text.xpath('//*[@id="content"]/div[1]/ul/li/div[1]/div[3]/div/text()')
+    total_price = data_text.xpath('//*[@id="content"]/div[1]/ul/li/div[1]/div[6]/div[1]/span/text()')
+    unit_price = data_text.xpath('//*[@id="content"]/div[1]/ul/li/div[1]/div[6]/div[2]/span/text()')
+    attention = data_text.xpath('//*[@id="content"]/div[1]/ul/li/div[1]/div[4]/text()')
+    # 打开文件
+    file_name = '成都市双流区二手房源.xlsx'
+    global total_count
+    # 判断文件是否存在
+    if os.path.exists(file_name):
+        wb = openpyxl.load_workbook(file_name)
+        print(file_name + '打开成功！')
+        ws = wb.active
+    else:
+        wb = openpyxl.Workbook()  # 创建文件对象
+        print('文件' + file_name + '创建成功！')
+        ws = wb.active
+        ws.append(['房源描述', '地址', '房源情况', '规格', '面积', '总价(万)', '单价(元/平米)', '信息发布情况'])
+    for i in range(0, len(description)):
+        price = re.search('单价(\\d*?)元/平米', unit_price[i], flags=0)
+        list = specific_situation[i].split(' | ')
+        specification = list[0]
+        area = re.search('(.*)平米', list[1], flags=0).group(1)
+        ws.append(
+            [description[i], address[i], specific_situation[i], specification, area, total_price[i], price.group(1),
+             attention[i]])
+        total_count += 1
+    global count
+    count += 1
+    print('第' + str(count) + '页爬取成功!')
+    wb.save(filename=file_name)
+
+
+def main(url):
+    html_data = get_one_page(url)
+    if html_data is not None:
+        parse_page(html_data)
+
+
+if __name__ == '__main__':
+    global count
+    global total_count
+    count = 0
+    total_count = 0
+    start = time.time()
+    for i in range(1, 101):
+        url = 'https://cd.lianjia.com/ershoufang/pg' + str(i) + 'rs双流区/'
+        time.sleep(random.randint(0, 3))
+        main(url)
+    final = time.time()
+    print('爬取完毕，共花费' + str(final - start) + 's.')
+    print('共爬取' + str(count) + '页数据')
+    print('共爬取' + str(total_count) + '条数据')
